@@ -144,7 +144,7 @@ XPC_IGNORE_DUPLICATE_PROTOCOL_POP;
 	@end
 
 // hack to create symbol aliases programmatically, because the `alias` attribute isn't supported on Darwin platforms
-#define _CREATE_ALIAS(original, alias) __asm__(".globl " original "; .globl " alias "; .equiv " alias ", " original)
+#define _CREATE_ALIAS(original, alias) __asm__(".globl " original "\n .globl " alias "\n .equiv " alias ", " original)
 
 #define XPC_CLASS_SYMBOL(name) _xpc_type_ ## name
 #define XPC_CLASS_SYMBOL_DECL(name) \
