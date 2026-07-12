@@ -42,10 +42,31 @@ struct os_system_version _system_version_fallback = {
 static struct os_system_version current_version = {0};
 static dispatch_once_t current_version_once;
 
+int os_system_version_get_current_version(struct os_system_version* out_version);
+
 XPC_EXPORT
 bool _availability_version_check(size_t version_count, dyld_build_version_t* versions) {
-	// i'm *pretty* sure the second argument is an array of `dyld_build_version_t`
-	xpc_stub();
+	if (versions == NULL) {
+		return false;
+	}
+
+	struct os_system_version system_version;
+	if (os_system_version_get_current_version(&system_version) != 0) {
+		return false;
+	}
+
+	uint32_t packed_version =
+		(system_version.major << 16) |
+		(system_version.minor << 8) |
+		system_version.patch;
+	dyld_platform_t active_platform = dyld_get_active_platform();
+
+	for (size_t index = 0; index < version_count; ++index) {
+		if (versions[index].platform == active_platform) {
+			return packed_version >= versions[index].version;
+		}
+	}
+
 	return false;
 };
 
