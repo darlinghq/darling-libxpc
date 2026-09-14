@@ -378,7 +378,7 @@ static void dmxh_async_reply_handler(void* self_context, dispatch_mach_reason_t 
 				// if the message is only a header, it means that the remote peer disconnected/crashed
 				xpc_log(connection, "connection %p: async reply handler received empty message due to peer disconnect", this);
 				mach_msg_destroy(header);
-				if (this->service_name) {
+				if (this->service_name && !this->lookup_failed) {
 					result = XPC_ERROR_CONNECTION_INTERRUPTED;
 				} else {
 					result = XPC_ERROR_CONNECTION_INVALID;
@@ -397,7 +397,7 @@ static void dmxh_async_reply_handler(void* self_context, dispatch_mach_reason_t 
 		case DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED: {
 			xpc_log(connection, "connection %p: async reply handler was informed that we were cancelled while waiting", this);
 			mach_msg_destroy(header);
-			if (this->service_name) {
+			if (this->service_name && !this->lookup_failed) {
 				result = XPC_ERROR_CONNECTION_INTERRUPTED;
 			} else {
 				result = XPC_ERROR_CONNECTION_INVALID;
@@ -745,7 +745,7 @@ OS_OBJECT_USES_XREF_DISPOSE();
 		status = bootstrap_look_up(bootstrap_port, this->service_name, &this->checkin_port);
 		if (status != KERN_SUCCESS) {
 			xpc_log_error(connection, "failed to lookup service with name \"%s\"", this->service_name);
-			goto error_out;
+			goto invalid_out;
 		}
 	} else if (this->is_server_peer) {
 		// server peer
@@ -799,6 +799,17 @@ error_out:
 	xpc_mach_port_release_send(this->send_port);
 	xpc_mach_port_release_receive(this->recv_port);
 	this->activated = false;
+	return;
+
+invalid_out:
+	// the named service doesn't exist, so this connection can never be established.
+	// like on macOS, report it as invalid: activate the channel without any ports and cancel it right away.
+	// the DISPATCH_MACH_CANCELED event then delivers XPC_ERROR_CONNECTION_INVALID to the event handler,
+	// and messages sent afterwards fail and have their reply handlers called.
+	this->lookup_failed = true;
+	dispatch_mach_connect(this->mach_ctx, MACH_PORT_NULL, MACH_PORT_NULL, NULL);
+	dispatch_mach_cancel(this->mach_ctx);
+	this->activated = true;
 }
 
 - (BOOL)activate
@@ -988,7 +999,7 @@ error_out:
 	}
 
 	if (!reply) {
-		if (this->service_name) {
+		if (this->service_name && !this->lookup_failed) {
 			return XPC_ERROR_CONNECTION_INTERRUPTED;
 		} else {
 			return XPC_ERROR_CONNECTION_INVALID;
@@ -1000,7 +1011,7 @@ error_out:
 	if (header->msgh_size == sizeof(mach_msg_header_t)) {
 		// if the message is only a header, it means that the remote peer disconnected/crashed
 		mach_msg_destroy(header);
-		if (this->service_name) {
+		if (this->service_name && !this->lookup_failed) {
 			return XPC_ERROR_CONNECTION_INTERRUPTED;
 		} else {
 			return XPC_ERROR_CONNECTION_INVALID;
