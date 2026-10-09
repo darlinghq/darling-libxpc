@@ -13,16 +13,23 @@ int main(void) {
     dispatch_queue_t queue = dispatch_queue_create("missing-service-events", NULL);
     dispatch_semaphore_t received = dispatch_semaphore_create(0);
     dispatch_queue_set_specific(queue, &queue_key, &queue_key, NULL);
-    __block int invalid = 0;
-    __block int correct_queue = 0;
+    // Written only on the serial target queue; read after dispatch_sync on it.
+    __block int events = 0;
+    __block int invalid_events = 0;
+    __block int first_invalid = 0;
+    __block int all_on_queue = 1;
     xpc_connection_t connection = xpc_connection_create_mach_service(name, queue, 0);
     if (!connection) {
         fprintf(stderr, "FAIL: connection creation returned NULL\n");
         return 1;
     }
     xpc_connection_set_event_handler(connection, ^(xpc_object_t event) {
-        invalid = event == XPC_ERROR_CONNECTION_INVALID;
-        correct_queue = dispatch_get_specific(&queue_key) == &queue_key;
+        int is_invalid = event == XPC_ERROR_CONNECTION_INVALID;
+        if (events++ == 0)
+            first_invalid = is_invalid;
+        invalid_events += is_invalid;
+        if (dispatch_get_specific(&queue_key) != &queue_key)
+            all_on_queue = 0;
         dispatch_semaphore_signal(received);
     });
     puts("probe: handler installed; resuming synthetic local connection");
@@ -42,10 +49,11 @@ int main(void) {
     xpc_release(connection);
     dispatch_release(received);
     dispatch_release(queue);
-    if (!invalid || !correct_queue) {
-        fprintf(stderr, "FAIL: invalid=%d target_queue=%d\n", invalid, correct_queue);
+    if (events != 1 || !first_invalid || invalid_events != 1 || !all_on_queue) {
+        fprintf(stderr, "FAIL: events=%d first_invalid=%d invalid_events=%d target_queue=%d\n",
+            events, first_invalid, invalid_events, all_on_queue);
         return 1;
     }
-    puts("PASS: nonexistent local service delivered INVALID on target queue");
+    puts("PASS: nonexistent local service delivered exactly one INVALID on target queue");
     return 0;
 }
