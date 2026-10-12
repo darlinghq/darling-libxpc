@@ -209,7 +209,9 @@ out:
 				goto out;
 			}
 
-			*incomingMessage = dict;
+			// The deserializer autoreleases its result. The C pipe API
+			// transfers an owned reference to the caller.
+			*incomingMessage = [dict retain];
 
 			status = 0;
 		} else {
@@ -249,7 +251,7 @@ out:
 				goto out;
 			}
 
-			*incomingMessage = dict;
+			*incomingMessage = [dict retain];
 			*replyPort = header->msgh_local_port;
 
 			status = 0;
@@ -581,7 +583,7 @@ retry:
 					goto out;
 				}
 
-				*reply = dict;
+				*reply = [dict retain];
 
 				status = 0;
 			} else {
