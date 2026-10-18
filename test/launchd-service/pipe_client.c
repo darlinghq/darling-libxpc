@@ -116,6 +116,7 @@ static void reply_handler(test_service_message_type_t outgoing_message_type, xpc
 
 				if (status == 0) {
 					reply_handler(test_service_message_type_hello, reply);
+					xpc_release(reply);
 				} else {
 					error_handler(status);
 				}
@@ -157,6 +158,7 @@ int main(int argc, char** argv) {
 
 			if (status == 0) {
 				reply_handler(message_type, reply);
+				xpc_release(reply);
 			} else {
 				error_handler(status);
 			}
@@ -172,6 +174,7 @@ int main(int argc, char** argv) {
 
 			if (status == 0) {
 				reply_handler(message_type, reply);
+				xpc_release(reply);
 			} else {
 				error_handler(status);
 			}
@@ -185,6 +188,7 @@ int main(int argc, char** argv) {
 
 			if (status == 0) {
 				reply_handler(message_type, reply);
+				xpc_release(reply);
 			} else {
 				error_handler(status);
 			}
