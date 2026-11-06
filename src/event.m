@@ -17,11 +17,65 @@
  * along with Darling.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#import <xpc/objects/event_publisher.h>
 #import <xpc/xpc.h>
 #import <xpc/util.h>
+#import <Block.h>
+#include <stdlib.h>
+#include <string.h>
 
-// actually, the event publisher is it's own class
-typedef xpc_object_t xpc_event_publisher_t;
+// An event publisher is how a daemon learns about the launchd event stream
+// subscriptions of its clients. Darling's launchd has no event streams, so
+// there is never anything to add or remove, but a publisher still has to go
+// through the lifecycle its owner expects: once activated, the handler is
+// told on the publisher's queue that the initial set of subscriptions has
+// been delivered (XPC_EVENT_PUBLISHER_ACTION_INITIAL_BARRIER). Daemons such
+// as notifyd only start serving after that.
+
+OS_OBJECT_NONLAZY_CLASS
+@implementation XPC_CLASS(event_publisher)
+
+XPC_CLASS_HEADER(event_publisher);
+
+- (void)dealloc
+{
+	XPC_THIS_DECL(event_publisher);
+	if (this->handler) {
+		Block_release(this->handler);
+	}
+	if (this->error_handler) {
+		Block_release(this->error_handler);
+	}
+	if (this->queue) {
+		dispatch_release(this->queue);
+	}
+	free(this->name);
+	[super dealloc];
+}
+
+- (char*)xpcDescription
+{
+	XPC_THIS_DECL(event_publisher);
+	char* output = NULL;
+	asprintf(&output, "<%s: %s>", xpc_class_name(self), this->name ? this->name : "");
+	return output;
+}
+
+- (instancetype)initWithName: (const char*)name queue: (dispatch_queue_t)queue
+{
+	if (self = [super init]) {
+		XPC_THIS_DECL(event_publisher);
+		this->name = name ? strdup(name) : NULL;
+		if (!queue) {
+			queue = dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0);
+		}
+		dispatch_retain(queue);
+		this->queue = queue;
+	}
+	return self;
+}
+
+@end
 
 XPC_EXPORT const char* const _xpc_event_key_name = "XPCEventName";
 XPC_EXPORT const char* const _xpc_event_key_stream_name = "XPCEventStreamName";
@@ -32,13 +86,32 @@ XPC_EXPORT const char* const _xpc_event_key_stream_name = "XPCEventStreamName";
 
 XPC_EXPORT
 void xpc_event_publisher_activate(xpc_event_publisher_t xpub) {
-	xpc_stub();
+	TO_OBJC_CHECKED(event_publisher, xpub, publisher) {
+		struct xpc_event_publisher_s* this = (struct xpc_event_publisher_s*)publisher;
+		if (this->activated) {
+			return;
+		}
+		this->activated = true;
+
+		if (!this->handler) {
+			return;
+		}
+
+		// There are no subscriptions to deliver first, so the barrier comes
+		// right away, but asynchronously on the publisher's queue, after
+		// activation has returned.
+		xpc_event_publisher_handler_t handler = Block_copy(this->handler);
+		dispatch_async(this->queue, ^{
+			handler(XPC_EVENT_PUBLISHER_ACTION_INITIAL_BARRIER, 0, NULL);
+			Block_release(handler);
+		});
+	}
 };
 
 XPC_EXPORT
 xpc_object_t xpc_event_publisher_create(const char* name, void* some_parameter) {
-	xpc_stub();
-	return NULL;
+	// The second parameter is the queue the handlers run on
+	return [[XPC_CLASS(event_publisher) alloc] initWithName: name queue: (dispatch_queue_t)some_parameter];
 };
 
 XPC_EXPORT
@@ -76,15 +149,30 @@ au_asid_t xpc_event_publisher_get_subscriber_asid(xpc_event_publisher_t xpub, ui
 
 XPC_EXPORT
 void xpc_event_publisher_set_error_handler(xpc_event_publisher_t xpub, void (^handler)()) {
-	// no clue what the parameters for the handler are
-	// (probably includes some sort of error parameter, but i have no clue what that is)
-	xpc_stub();
+	// The handler takes an error code. Without event streams, nothing
+	// reports an error to it.
+	TO_OBJC_CHECKED(event_publisher, xpub, publisher) {
+		struct xpc_event_publisher_s* this = (struct xpc_event_publisher_s*)publisher;
+		xpc_event_publisher_error_handler_t old = this->error_handler;
+		this->error_handler = handler ? Block_copy((xpc_event_publisher_error_handler_t)handler) : NULL;
+		if (old) {
+			Block_release(old);
+		}
+	}
 };
 
 XPC_EXPORT
 void xpc_event_publisher_set_handler(xpc_event_publisher_t xpub, void (^handler)()) {
-	// likewise, no clue what the parameters to the handler are
-	xpc_stub();
+	// The handler takes an xpc_event_publisher_action_t, the event token and
+	// the subscription's descriptor.
+	TO_OBJC_CHECKED(event_publisher, xpub, publisher) {
+		struct xpc_event_publisher_s* this = (struct xpc_event_publisher_s*)publisher;
+		xpc_event_publisher_handler_t old = this->handler;
+		this->handler = handler ? Block_copy((xpc_event_publisher_handler_t)handler) : NULL;
+		if (old) {
+			Block_release(old);
+		}
+	}
 };
 
 XPC_EXPORT
