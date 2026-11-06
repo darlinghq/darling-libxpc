@@ -975,6 +975,12 @@ invalid_out:
 	XPC_CLASS(dictionary)* result = nil;
 	mach_msg_header_t* header = NULL;
 
+	if (this->lookup_failed) {
+		// the named service doesn't exist, so there is no peer that could ever reply.
+		// fail right away instead of relying on the cancelled channel to wake up the reply wait.
+		return XPC_ERROR_CONNECTION_INVALID;
+	}
+
 	@autoreleasepool {
 		XPC_CLASS(serializer)* serializer = [XPC_CLASS(serializer) serializer];
 		dispatch_mach_msg_t message = NULL;
