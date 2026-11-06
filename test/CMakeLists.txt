@@ -57,3 +57,12 @@ target_link_libraries(test_libxpc
 
 install(TARGETS test_libxpc DESTINATION libexec/darling/usr/libexec)
 
+
+add_darling_executable(libxpc_test_nonexistent_service nonexistent-mach-service.c)
+
+target_link_libraries(libxpc_test_nonexistent_service
+	xpc_static
+	objc
+)
+
+install(TARGETS libxpc_test_nonexistent_service DESTINATION libexec/darling/usr/libexec)
