@@ -419,6 +419,22 @@ out:
 		}
 
 		this->checkin_port = port;
+
+		if (MACH_PORT_VALID(port) && port == bootstrap_port) {
+			// launchd is not an XPC listener: it receives pipe routines
+			// directly on the bootstrap port (`xpc_pipe_try_receive` on its
+			// port set) and never sees a checkin, so messages go straight to
+			// the port.
+			if (xpc_mach_port_retain_send(port) != KERN_SUCCESS) {
+				[self release];
+				return nil;
+			}
+			this->send_port = port;
+			this->recv_port = MACH_PORT_NULL;
+			this->state = xpc_pipe_state_active;
+			return self;
+		}
+
 		this->send_port = xpc_mach_port_create_send_receive();
 		this->recv_port = xpc_mach_port_create_receive();
 
