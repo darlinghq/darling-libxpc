@@ -184,10 +184,19 @@ static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, 
 					xpc_abort("failed to read peer receive port from checkin message");
 				}
 
-				if (!MACH_PORT_VALID(sendPort) || !MACH_PORT_VALID(receivePort)) {
+				if (!MACH_PORT_VALID(receivePort) || sendPort == MACH_PORT_NULL) {
 					xpc_log(connection, "peer died before their checkin message went through");
 					mach_msg_destroy(header);
 					return;
+				}
+
+				if (sendPort == MACH_PORT_DEAD) {
+					// The peer closed its end after sending (its receive right is gone, so
+					// our send right arrived as a dead name). The messages it sent before
+					// that are still queued on the receive port, so the peer is set up
+					// anyway; it cannot be replied to and is cancelled once those are
+					// delivered.
+					sendPort = MACH_PORT_NULL;
 				}
 
 				serverPeer = [[XPC_CLASS(connection) alloc] initAsServerPeerForServer: self sendPort: sendPort receivePort: receivePort];
@@ -762,8 +771,8 @@ OS_OBJECT_USES_XREF_DISPOSE();
 		}
 	} else if (this->is_server_peer) {
 		// server peer
-		// should already have ports set up
-		xpc_assert(MACH_PORT_VALID(this->send_port));
+		// should already have ports set up (the send port is null if the peer
+		// closed its end before we got its checkin)
 		xpc_assert(MACH_PORT_VALID(this->recv_port));
 	} else {
 		// client for anonymous server
