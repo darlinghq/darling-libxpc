@@ -23,6 +23,7 @@
 #import <os/object_private.h>
 #import <objc/NSObject.h>
 #import <xpc/internal_base.h>
+#import <xpc/objc1.h>
 
 #define __XPC_INDIRECT__
 #import <xpc/base.h>
@@ -151,9 +152,16 @@ XPC_IGNORE_DUPLICATE_PROTOCOL_POP;
 #endif
 
 #define XPC_CLASS_SYMBOL(name) _xpc_type_ ## name
+#if XPC_OBJC1
+// The type symbols are defined in objc1.m (see xpc/objc1.h).
+#define XPC_CLASS_SYMBOL_DECL(name) \
+	XPC_EXPORT const struct objc_class XPC_CLASS_SYMBOL(name)
+#else
+// The type symbol is the class.
 #define XPC_CLASS_SYMBOL_DECL(name) \
 	XPC_EXPORT struct objc_class XPC_CLASS_SYMBOL(name); \
 	_CREATE_ALIAS(OS_OBJC_CLASS_RAW_SYMBOL_NAME(XPC_CLASS(name)), "_" OS_STRINGIFY(XPC_CLASS_SYMBOL(name)))
+#endif
 
 #define XPC_OBJC_CLASS(name) ((Class)&XPC_CLASS_SYMBOL(name))
 

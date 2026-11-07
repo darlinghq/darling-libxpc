@@ -25,8 +25,10 @@
 #import <xpc/serialization.h>
 
 // the symbol alias for the base xpc_object class is named differently
+#if !XPC_OBJC1
 XPC_EXPORT struct objc_class _xpc_type_base;
 _CREATE_ALIAS(OS_OBJC_CLASS_RAW_SYMBOL_NAME(XPC_CLASS(object)), "__xpc_type_base");
+#endif
 
 OS_OBJECT_NONLAZY_CLASS
 @implementation XPC_CLASS(object)

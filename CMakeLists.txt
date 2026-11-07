@@ -57,6 +57,7 @@ set(xpc_sources
 	src/mach_send.m
 	src/misc.m
 	src/null.m
+	src/objc1.m
 	src/pipe.m
 	src/plist.m
 	src/pointer.m
