@@ -204,6 +204,15 @@ xpc_object_t xpc_retain(xpc_object_t object);
 void xpc_transaction_begin(void);
 void xpc_transaction_end(void);
 
+// The name of the launchd.plist LaunchEvents entry that an event delivered
+// to an event stream handler was set up for.
+extern const char* const _xpc_event_key_name;
+#define XPC_EVENT_KEY_NAME _xpc_event_key_name
+
+#if __BLOCKS__
+void xpc_set_event_stream_handler(const char* stream, dispatch_queue_t targetq, xpc_handler_t handler);
+#endif
+
 __END_DECLS
 
 #endif // __XPC_H__ 

@@ -118,6 +118,9 @@ struct xpc_connection_s {
 - (instancetype)initAsServerForService: (const char*)serviceName queue: (dispatch_queue_t)queue;
 - (instancetype)initWithEndpoint: (XPC_CLASS(endpoint)*)endpoint;
 - (instancetype)initAsAnonymousServerWithQueue: (dispatch_queue_t)queue;
+// NOTE: this initializer takes ownership of the receive right passed in.
+// The listener accepts checkins on that port, like an anonymous server.
+- (instancetype)initAsListenerWithReceivePort: (mach_port_t)port queue: (dispatch_queue_t)queue;
 // NOTE: this initializer will take ownership of the ports references passed in
 // (i.e. the caller loses a reference on both the send port and the receive port)
 - (instancetype)initAsServerPeerForServer: (XPC_CLASS(connection)*)server sendPort: (mach_port_t)sendPort receivePort: (mach_port_t)receivePort;

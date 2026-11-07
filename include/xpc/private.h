@@ -154,6 +154,20 @@ XPC_EXPORT au_asid_t xpc_event_publisher_get_subscriber_asid(xpc_event_publisher
 
 XPC_EXPORT void xpc_track_activity(void);
 
+// launchd event routines (see `xpc_event_t` in <xpc/launchd_defs.h>)
+
+XPC_EXPORT void xpc_set_event(const char* stream, const char* name, xpc_object_t descriptor);
+
+XPC_EXPORT void xpc_set_event_with_flags(const char* stream, const char* name, xpc_object_t descriptor, uint64_t flags);
+
+XPC_EXPORT xpc_object_t xpc_copy_event(const char* stream, const char* name);
+
+XPC_EXPORT int xpc_get_event_name(const char* stream, uint64_t token, char* name);
+
+XPC_EXPORT xpc_object_t xpc_copy_event_entitlements(const char* stream, uint64_t token);
+
+XPC_EXPORT void xpc_set_event_state(const char* stream, uint64_t token, bool state);
+
 __END_DECLS
 
 #endif

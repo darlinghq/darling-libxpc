@@ -18,15 +18,26 @@
  */
 
 #import <xpc/objects/event_publisher.h>
+#import <xpc/objects/connection.h>
+#import <xpc/objects/dictionary.h>
+#import <xpc/objects/mach_recv.h>
 #import <xpc/xpc.h>
+#import <xpc/private/pipe.h>
+#import <xpc/private/mach_recv.h>
 #import <xpc/util.h>
 #import <Block.h>
+#include <servers/bootstrap.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
+XPC_LOGGER_DEF(event);
+
 // An event publisher is how a daemon learns about the launchd event stream
-// subscriptions of its clients. Darling's launchd has no event streams, so
-// there is never anything to add or remove, but a publisher still has to go
+// subscriptions of its clients. Darling's launchd has no publishers (its
+// streams are served by the one job marked EventMonitor, through the provider
+// routines below), so there is never anything to add or remove, but a
+// publisher still has to go
 // through the lifecycle its owner expects: once activated, the handler is
 // told on the publisher's queue that the initial set of subscriptions has
 // been delivered (XPC_EVENT_PUBLISHER_ACTION_INITIAL_BARRIER). Daemons such
@@ -201,42 +212,229 @@ int xpc_event_stream_check_in2() {
 	return 0;
 };
 
+//
+// launchd event routines
+//
+// A job's LaunchEvents are kept by launchd per stream. The calls below are
+// the client side of launchd's XPC event routines (`xpc_event_t` in
+// <xpc/launchd_defs.h>): each one is a pipe routine to launchd over the
+// bootstrap port, and launchd reports a failure in the reply under
+// XPC_EVENT_ROUTINE_KEY_ERROR.
+//
+
+static int xpc_event_routine(xpc_event_t op, xpc_object_t request, xpc_object_t* out_reply) {
+	xpc_pipe_t pipe = xpc_pipe_create_from_port(bootstrap_port, 0);
+	if (!pipe) {
+		return EPIPE;
+	}
+
+	xpc_dictionary_set_uint64(request, XPC_EVENT_ROUTINE_KEY_OP, op);
+
+	xpc_object_t reply = NULL;
+	int status = xpc_pipe_routine(pipe, request, &reply);
+	xpc_release(pipe);
+
+	if (status == 0) {
+		status = (int)xpc_dictionary_get_uint64(reply, XPC_EVENT_ROUTINE_KEY_ERROR);
+		if (status == 0 && out_reply) {
+			*out_reply = reply;
+			reply = NULL;
+		}
+	}
+
+	if (reply) {
+		xpc_release(reply);
+	}
+	return status;
+};
+
+static xpc_object_t xpc_event_request_create(const char* stream) {
+	xpc_object_t request = xpc_dictionary_create(NULL, NULL, 0);
+	if (stream) {
+		xpc_dictionary_set_string(request, XPC_EVENT_ROUTINE_KEY_STREAM, stream);
+	}
+	return request;
+};
+
+// Returns a retained copy of the reply's value for `key`, or NULL.
+static xpc_object_t xpc_event_routine_copy_value(xpc_event_t op, xpc_object_t request, const char* key) {
+	xpc_object_t reply = NULL;
+	xpc_object_t value = NULL;
+
+	if (xpc_event_routine(op, request, &reply) == 0) {
+		value = xpc_dictionary_get_value(reply, key);
+		if (value) {
+			xpc_retain(value);
+		}
+		xpc_release(reply);
+	}
+
+	return value;
+};
+
 XPC_EXPORT
 int xpc_get_event_name(const char* stream, uint64_t token, char* out_name) {
-	xpc_stub();
-	return -1;
+	// `out_name` is an `event_name_t`.
+	if (!stream || !out_name) {
+		return EINVAL;
+	}
+
+	xpc_object_t request = xpc_event_request_create(stream);
+	xpc_dictionary_set_uint64(request, XPC_EVENT_ROUTINE_KEY_TOKEN, token);
+
+	xpc_object_t reply = NULL;
+	int status = xpc_event_routine(XPC_EVENT_GET_NAME, request, &reply);
+	xpc_release(request);
+
+	if (status == 0) {
+		const char* name = xpc_dictionary_get_string(reply, XPC_EVENT_ROUTINE_KEY_NAME);
+		if (name) {
+			strlcpy(out_name, name, sizeof(event_name_t));
+		} else {
+			status = EINVAL;
+		}
+		xpc_release(reply);
+	}
+
+	return status;
 };
 
 XPC_EXPORT
 xpc_object_t xpc_copy_event(const char* stream, const char* name) {
-	// returns a dictionary
-	xpc_stub();
-	return NULL;
+	// launchd returns the descriptor of the named event, or with a NULL
+	// name, a dictionary of all the stream's events by name, or with a NULL
+	// stream too, a dictionary of streams.
+	xpc_object_t request = xpc_event_request_create(stream);
+	if (name) {
+		xpc_dictionary_set_string(request, XPC_EVENT_ROUTINE_KEY_NAME, name);
+	}
+
+	xpc_object_t event = xpc_event_routine_copy_value(XPC_EVENT_COPY, request, XPC_EVENT_ROUTINE_KEY_EVENT);
+	xpc_release(request);
+	return event;
 };
 
 XPC_EXPORT
 xpc_object_t xpc_copy_event_entitlements(const char* stream, uint64_t token) {
-	// returns a dictionary
-	xpc_stub();
-	return NULL;
-};
+	if (!stream) {
+		return NULL;
+	}
 
-XPC_EXPORT
-void xpc_set_event(const char* stream, const char* name, xpc_object_t descriptor) {
-	xpc_stub();
-};
+	xpc_object_t request = xpc_event_request_create(stream);
+	xpc_dictionary_set_uint64(request, XPC_EVENT_ROUTINE_KEY_TOKEN, token);
 
-XPC_EXPORT
-void xpc_set_event_state(const char* stream, uint64_t token, bool state) {
-	xpc_stub();
-};
-
-XPC_EXPORT
-void xpc_set_event_stream_handler(const char* connection_name, dispatch_queue_t queue, void (^handler)(xpc_object_t event)) {
-	xpc_stub();
+	xpc_object_t entitlements = xpc_event_routine_copy_value(XPC_EVENT_COPY_ENTITLEMENTS, request, XPC_EVENT_ROUTINE_KEY_ENTITLEMENTS);
+	xpc_release(request);
+	return entitlements;
 };
 
 XPC_EXPORT
 void xpc_set_event_with_flags(const char* stream, const char* name, xpc_object_t descriptor, uint64_t flags) {
-	xpc_stub();
+	// A NULL descriptor removes the event.
+	if (!stream || !name) {
+		return;
+	}
+
+	xpc_object_t request = xpc_event_request_create(stream);
+	xpc_dictionary_set_string(request, XPC_EVENT_ROUTINE_KEY_NAME, name);
+	if (descriptor) {
+		xpc_dictionary_set_value(request, XPC_EVENT_ROUTINE_KEY_EVENT, descriptor);
+	}
+	xpc_dictionary_set_uint64(request, XPC_EVENT_ROUTINE_KEY_FLAGS, flags);
+
+	int status = xpc_event_routine(XPC_EVENT_SET, request, NULL);
+	xpc_release(request);
+
+	if (status != 0) {
+		xpc_log_error(event, "setting event %s/%s failed: %d", stream, name, status);
+	}
+};
+
+XPC_EXPORT
+void xpc_set_event(const char* stream, const char* name, xpc_object_t descriptor) {
+	xpc_set_event_with_flags(stream, name, descriptor, 0);
+};
+
+XPC_EXPORT
+void xpc_set_event_state(const char* stream, uint64_t token, bool state) {
+	// Only the event monitor job may set states.
+	if (!stream) {
+		return;
+	}
+
+	xpc_object_t request = xpc_event_request_create(stream);
+	xpc_dictionary_set_uint64(request, XPC_EVENT_ROUTINE_KEY_TOKEN, token);
+	xpc_dictionary_set_bool(request, XPC_EVENT_ROUTINE_KEY_STATE, state);
+
+	int status = xpc_event_routine(XPC_EVENT_PROVIDER_SET_STATE, request, NULL);
+	xpc_release(request);
+
+	if (status != 0) {
+		xpc_log_error(event, "setting the state of event %s/%llu failed: %d", stream, token, status);
+	}
+};
+
+XPC_EXPORT
+void xpc_set_event_stream_handler(const char* stream, dispatch_queue_t targetq, xpc_handler_t handler) {
+	// The job checks in with launchd for the stream and gets the receive
+	// right of its event channel for the stream. An event provider looks the
+	// channel up and sends each event to it as a dictionary, over a pipe or
+	// a connection. launchd starts the job on demand when an event arrives
+	// while the job is not running.
+	if (!stream || !handler) {
+		return;
+	}
+
+	xpc_object_t request = xpc_event_request_create(stream);
+	xpc_object_t reply = NULL;
+	int status = xpc_event_routine(XPC_EVENT_CHECK_IN, request, &reply);
+	xpc_release(request);
+
+	if (status != 0) {
+		xpc_log_error(event, "checking in for event stream %s failed: %d", stream, status);
+		return;
+	}
+
+	mach_port_t port = MACH_PORT_NULL;
+	xpc_object_t xport = xpc_dictionary_get_value(reply, XPC_EVENT_ROUTINE_KEY_PORT);
+	if (XPC_CHECK(mach_recv, xport)) {
+		port = xpc_mach_recv_extract_right(xport);
+	}
+	xpc_release(reply);
+
+	if (!MACH_PORT_VALID(port)) {
+		xpc_log_error(event, "launchd returned no channel for event stream %s", stream);
+		return;
+	}
+
+	// Events are delivered one at a time, in order, on the target queue
+	// (the default target queue if it is NULL).
+	dispatch_queue_t queue = dispatch_queue_create("com.apple.xpc.event-stream", DISPATCH_QUEUE_SERIAL);
+	dispatch_set_target_queue(queue, targetq);
+
+	XPC_CLASS(connection)* listener = [[XPC_CLASS(connection) alloc] initAsListenerWithReceivePort: port queue: queue];
+	if (!listener) {
+		xpc_log_error(event, "cannot listen on the channel for event stream %s", stream);
+		dispatch_release(queue);
+		return;
+	}
+
+	xpc_handler_t event_handler = Block_copy(handler);
+	xpc_connection_set_event_handler(listener, ^(xpc_object_t object) {
+		if (!XPC_CHECK(connection, object)) {
+			return;
+		}
+		xpc_connection_t peer = (xpc_connection_t)object;
+		xpc_connection_set_target_queue(peer, queue);
+		xpc_connection_set_event_handler(peer, ^(xpc_object_t event) {
+			// Errors only say that the provider closed its end.
+			if (XPC_CHECK(dictionary, event)) {
+				event_handler(event);
+			}
+		});
+		xpc_connection_resume(peer);
+	});
+
+	// The listener and its queue stay for the life of the process.
+	xpc_connection_resume(listener);
 };

@@ -681,6 +681,28 @@ OS_OBJECT_USES_XREF_DISPOSE();
 	return self;
 }
 
+- (instancetype)initAsListenerWithReceivePort: (mach_port_t)port queue: (dispatch_queue_t)queue
+{
+	if (self = [super init]) {
+		XPC_THIS_DECL(connection);
+
+		[self initCommon: queue];
+
+		if (!MACH_PORT_VALID(port) || xpc_mach_port_make_send(port) != KERN_SUCCESS) {
+			xpc_mach_port_release_receive(port);
+			[self release];
+			return nil;
+		}
+
+		this->is_listener = true;
+		this->mach_ctx = dispatch_mach_create_4libxpc("org.darlinghq.libxpc.port-server", queue, self, dispatch_mach_handler);
+
+		this->send_port = port;
+		this->recv_port = port;
+	}
+	return self;
+}
+
 - (instancetype)initAsServerPeerForServer: (XPC_CLASS(connection)*)server sendPort: (mach_port_t)sendPort receivePort: (mach_port_t)receivePort
 {
 	if (self = [super init]) {
