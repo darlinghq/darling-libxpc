@@ -29,6 +29,7 @@ struct xpc_null_s _xpc_null = {
 		XPC_GLOBAL_OBJECT_HEADER(null),
 	},
 };
+XPC_GLOBAL_OBJECT_REGISTER(_xpc_null);
 
 OS_OBJECT_NONLAZY_CLASS
 @implementation XPC_CLASS(null)

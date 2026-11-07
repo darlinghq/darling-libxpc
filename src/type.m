@@ -28,7 +28,7 @@
 XPC_EXPORT
 xpc_type_t xpc_get_type(xpc_object_t xobject) {
 	TO_OBJC_CHECKED(object, xobject, object) {
-		return (xpc_type_t)[object class];
+		return XPC_TYPE_FOR_CLASS([object class]);
 	}
 	return NULL;
 };
@@ -41,12 +41,12 @@ xpc_type_t xpc_get_type(xpc_object_t xobject) {
 
 XPC_EXPORT
 const char* xpc_type_get_name(xpc_type_t xtype) {
-	return class_getName((Class)xtype);
+	return class_getName(XPC_CLASS_FOR_TYPE(xtype));
 };
 
 XPC_EXPORT
 Class xpc_get_class4NSXPC(xpc_type_t xtype) {
-	return (Class)xtype;
+	return XPC_CLASS_FOR_TYPE(xtype);
 };
 XPC_EXPORT
 bool xpc_is_kind_of_xpc_object4NSXPC(xpc_object_t object) {

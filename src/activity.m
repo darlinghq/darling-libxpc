@@ -118,6 +118,7 @@ static const struct xpc_string_s _xpc_activity_check_in = {
 	.string = "<CHECK-IN>",
 	.freeWhenDone = false,
 };
+XPC_GLOBAL_OBJECT_REGISTER(_xpc_activity_check_in);
 
 XPC_EXPORT
 const xpc_object_t XPC_ACTIVITY_CHECK_IN = XPC_GLOBAL_OBJECT(_xpc_activity_check_in);

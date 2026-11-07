@@ -41,6 +41,7 @@ struct _xpc_dictionary_s {
 		.string = _description, \
 		.freeWhenDone = false \
 	}; \
+	XPC_GLOBAL_OBJECT_REGISTER(_xpc_error_ ## _name ## _entry_string); \
 	extern const struct _xpc_dictionary_s _xpc_error_ ## _name; \
 	struct xpc_dictionary_entry_s _xpc_error_ ## _name ## _entry = { \
 		.link = { \
@@ -62,7 +63,8 @@ struct _xpc_dictionary_s {
 				}, \
 			}, \
 		}, \
-	};
+	}; \
+	XPC_GLOBAL_OBJECT_REGISTER(_xpc_error_ ## _name);
 
 XPC_ERROR_DEFINITION(connection_interrupted, "Connection interrupted");
 XPC_ERROR_DEFINITION(connection_invalid, "Connection invalid");

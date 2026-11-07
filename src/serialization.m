@@ -26,7 +26,8 @@
 // if the number of ports of the same type exceeds this number, they are all stuffed into an OOL descriptor.
 #define OOL_PORT_THRESHOLD 1
 
-static Class xpc_classes[] = {
+// the type symbols (XPC_TYPE_*), indexed by serialized type
+static const void* const xpc_classes[] = {
 	XPC_TYPE_NULL,
 	XPC_TYPE_BOOL,
 	XPC_TYPE_INT64,
@@ -60,13 +61,14 @@ Class type_to_class(uint32_t type) {
 	if ((type & 0xfff) != 0 || type < XPC_SERIAL_TYPE_MIN || type > XPC_SERIAL_TYPE_MAX) {
 		return nil;
 	}
-	return xpc_classes[(type / 0x1000) - 1];
+	return XPC_CLASS_FOR_TYPE(xpc_classes[(type / 0x1000) - 1]);
 };
 
 XPC_INLINE
 uint32_t class_to_type(Class class) {
-	for (size_t i = 0; i < (sizeof(xpc_classes) / sizeof(Class)); ++i) {
-		if (xpc_classes[i] == class) {
+	const void* type = XPC_TYPE_FOR_CLASS(class);
+	for (size_t i = 0; i < (sizeof(xpc_classes) / sizeof(*xpc_classes)); ++i) {
+		if (xpc_classes[i] == type) {
 			return (i + 1) * 0x1000;
 		}
 	}

@@ -18,6 +18,7 @@
  */
 
 #import <xpc/xpc.h>
+#include <xpc/objc1.h>
 
 void xpc_stub_init(void);
 
@@ -26,6 +27,9 @@ extern void bootstrap_init(void); // in liblaunch
 XPC_EXPORT
 void _libxpc_initializer(void)
 {
+#if XPC_OBJC1
+	xpc_objc1_fix_global_objects();
+#endif
 	xpc_stub_init();
 	bootstrap_init();
 }

@@ -40,6 +40,7 @@ const struct _xpc_bool_s _xpc_bool_true = {
 		.value = true,
 	},
 };
+XPC_GLOBAL_OBJECT_REGISTER(_xpc_bool_true);
 
 XPC_EXPORT
 const struct _xpc_bool_s _xpc_bool_false = {
@@ -50,6 +51,7 @@ const struct _xpc_bool_s _xpc_bool_false = {
 		.value = false,
 	},
 };
+XPC_GLOBAL_OBJECT_REGISTER(_xpc_bool_false);
 
 OS_OBJECT_NONLAZY_CLASS
 @implementation XPC_CLASS(bool)

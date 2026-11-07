@@ -26,5 +26,16 @@
 #define OBJC2_UNAVAILABLE
 #endif
 
+// i386 uses the legacy Objective-C ABI: see xpc/objc1.h.
+#if defined(__i386__)
+#define XPC_OBJC1 1
+#else
+#define XPC_OBJC1 0
+#endif
+
+#if XPC_OBJC1
+#define XPC_TYPE(name) const struct objc_class name
+#else
 #define XPC_TYPE(name) struct objc_class name
+#endif
 #define XPC_DECL(name) OS_OBJECT_DECL_SUBCLASS(name, xpc_object)
