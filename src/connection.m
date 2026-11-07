@@ -314,6 +314,14 @@ static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, 
 			}
 		} break;
 
+		case DISPATCH_MACH_MESSAGE_SENT: {
+			// A message the channel sent on its own, such as the checkin. The
+			// kernel has taken its rights; the buffer still names them, so it
+			// must not be destroyed. Destroying it released the checkin's moved
+			// receive right again, which, when the server is in this same
+			// process, is now the server peer's port.
+		} break;
+
 		case DISPATCH_MACH_SIGTERM_RECEIVED: {
 			this->event_handler(XPC_ERROR_TERMINATION_IMMINENT);
 		} break;
