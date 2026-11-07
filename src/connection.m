@@ -148,15 +148,6 @@ static bool handle_send_result(dispatch_mach_msg_t message, dispatch_mach_reason
 	return false;
 };
 
-static audit_token_t* get_audit_token(mach_msg_header_t* header) {
-	audit_token_t* token = NULL;
-	mach_msg_trailer_t* trailer = (mach_msg_trailer_t *)((char*)header + round_msg(header->msgh_size));
-	if (trailer->msgh_trailer_type == MACH_MSG_TRAILER_FORMAT_0 && trailer->msgh_trailer_size >= sizeof(mach_msg_audit_trailer_t)) {
-		token = &((mach_msg_audit_trailer_t*)trailer)->msgh_audit;
-	}
-	return token;
-};
-
 static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, dispatch_mach_msg_t message, mach_error_t error) {
 	XPC_CLASS(connection)* self = context;
 	XPC_THIS_DECL(connection);
@@ -180,7 +171,7 @@ static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, 
 					return;
 				}
 
-				token = get_audit_token(header);
+				token = xpc_mach_msg_audit_token(header);
 
 				[message retain]; // because the deserializer consumes a reference on the message
 				deserializer = [[[XPC_CLASS(deserializer) alloc] initWithoutHeaderWithMessage: message] autorelease];
@@ -216,7 +207,7 @@ static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, 
 					return;
 				}
 
-				token = get_audit_token(header);
+				token = xpc_mach_msg_audit_token(header);
 
 				if (token) {
 					[self setRemoteCredentials: token];
@@ -368,7 +359,7 @@ static void dmxh_async_reply_handler(void* self_context, dispatch_mach_reason_t 
 
 	switch (reason) {
 		case DISPATCH_MACH_MESSAGE_RECEIVED: {
-			token = get_audit_token(header);
+			token = xpc_mach_msg_audit_token(header);
 
 			if (token) {
 				[self setRemoteCredentials: token];

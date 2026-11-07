@@ -209,6 +209,8 @@ out:
 				goto out;
 			}
 
+			[dict setAssociatedAuditToken: xpc_mach_msg_audit_token(header)];
+
 			// The deserializer autoreleases its result. The C pipe API
 			// transfers an owned reference to the caller.
 			*incomingMessage = [dict retain];
@@ -250,6 +252,11 @@ out:
 				status = EIO;
 				goto out;
 			}
+
+			// The receiver identifies the sender by this token
+			// (`xpc_dictionary_get_audit_token`), like for a message received
+			// on a connection.
+			[dict setAssociatedAuditToken: xpc_mach_msg_audit_token(header)];
 
 			*incomingMessage = [dict retain];
 			*replyPort = header->msgh_local_port;
