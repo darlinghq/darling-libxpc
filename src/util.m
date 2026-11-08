@@ -115,6 +115,14 @@ bool xpc_mach_port_is_dead(mach_port_t port) {
 	return refs > 0;
 };
 
+audit_token_t* xpc_mach_msg_audit_token(mach_msg_header_t* header) {
+	mach_msg_trailer_t* trailer = (mach_msg_trailer_t*)((char*)header + round_msg(header->msgh_size));
+	if (trailer->msgh_trailer_type == MACH_MSG_TRAILER_FORMAT_0 && trailer->msgh_trailer_size >= sizeof(mach_msg_audit_trailer_t)) {
+		return &((mach_msg_audit_trailer_t*)trailer)->msgh_audit;
+	}
+	return NULL;
+};
+
 kern_return_t xpc_mach_port_retain_right(mach_port_name_t port, mach_port_right_t right) {
 	if (!MACH_PORT_VALID(port)) {
 		return KERN_SUCCESS;

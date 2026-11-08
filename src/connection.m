@@ -148,15 +148,6 @@ static bool handle_send_result(dispatch_mach_msg_t message, dispatch_mach_reason
 	return false;
 };
 
-static audit_token_t* get_audit_token(mach_msg_header_t* header) {
-	audit_token_t* token = NULL;
-	mach_msg_trailer_t* trailer = (mach_msg_trailer_t *)((char*)header + round_msg(header->msgh_size));
-	if (trailer->msgh_trailer_type == MACH_MSG_TRAILER_FORMAT_0 && trailer->msgh_trailer_size >= sizeof(mach_msg_audit_trailer_t)) {
-		token = &((mach_msg_audit_trailer_t*)trailer)->msgh_audit;
-	}
-	return token;
-};
-
 static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, dispatch_mach_msg_t message, mach_error_t error) {
 	XPC_CLASS(connection)* self = context;
 	XPC_THIS_DECL(connection);
@@ -180,7 +171,7 @@ static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, 
 					return;
 				}
 
-				token = get_audit_token(header);
+				token = xpc_mach_msg_audit_token(header);
 
 				[message retain]; // because the deserializer consumes a reference on the message
 				deserializer = [[[XPC_CLASS(deserializer) alloc] initWithoutHeaderWithMessage: message] autorelease];
@@ -193,10 +184,19 @@ static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, 
 					xpc_abort("failed to read peer receive port from checkin message");
 				}
 
-				if (!MACH_PORT_VALID(sendPort) || !MACH_PORT_VALID(receivePort)) {
+				if (!MACH_PORT_VALID(receivePort) || sendPort == MACH_PORT_NULL) {
 					xpc_log(connection, "peer died before their checkin message went through");
 					mach_msg_destroy(header);
 					return;
+				}
+
+				if (sendPort == MACH_PORT_DEAD) {
+					// The peer closed its end after sending (its receive right is gone, so
+					// our send right arrived as a dead name). The messages it sent before
+					// that are still queued on the receive port, so the peer is set up
+					// anyway; it cannot be replied to and is cancelled once those are
+					// delivered.
+					sendPort = MACH_PORT_NULL;
 				}
 
 				serverPeer = [[XPC_CLASS(connection) alloc] initAsServerPeerForServer: self sendPort: sendPort receivePort: receivePort];
@@ -216,7 +216,7 @@ static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, 
 					return;
 				}
 
-				token = get_audit_token(header);
+				token = xpc_mach_msg_audit_token(header);
 
 				if (token) {
 					[self setRemoteCredentials: token];
@@ -314,6 +314,14 @@ static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, 
 			}
 		} break;
 
+		case DISPATCH_MACH_MESSAGE_SENT: {
+			// A message the channel sent on its own, such as the checkin. The
+			// kernel has taken its rights; the buffer still names them, so it
+			// must not be destroyed. Destroying it released the checkin's moved
+			// receive right again, which, when the server is in this same
+			// process, is now the server peer's port.
+		} break;
+
 		case DISPATCH_MACH_SIGTERM_RECEIVED: {
 			this->event_handler(XPC_ERROR_TERMINATION_IMMINENT);
 		} break;
@@ -368,7 +376,7 @@ static void dmxh_async_reply_handler(void* self_context, dispatch_mach_reason_t 
 
 	switch (reason) {
 		case DISPATCH_MACH_MESSAGE_RECEIVED: {
-			token = get_audit_token(header);
+			token = xpc_mach_msg_audit_token(header);
 
 			if (token) {
 				[self setRemoteCredentials: token];
@@ -681,6 +689,28 @@ OS_OBJECT_USES_XREF_DISPOSE();
 	return self;
 }
 
+- (instancetype)initAsListenerWithReceivePort: (mach_port_t)port queue: (dispatch_queue_t)queue
+{
+	if (self = [super init]) {
+		XPC_THIS_DECL(connection);
+
+		[self initCommon: queue];
+
+		if (!MACH_PORT_VALID(port) || xpc_mach_port_make_send(port) != KERN_SUCCESS) {
+			xpc_mach_port_release_receive(port);
+			[self release];
+			return nil;
+		}
+
+		this->is_listener = true;
+		this->mach_ctx = dispatch_mach_create_4libxpc("org.darlinghq.libxpc.port-server", queue, self, dispatch_mach_handler);
+
+		this->send_port = port;
+		this->recv_port = port;
+	}
+	return self;
+}
+
 - (instancetype)initAsServerPeerForServer: (XPC_CLASS(connection)*)server sendPort: (mach_port_t)sendPort receivePort: (mach_port_t)receivePort
 {
 	if (self = [super init]) {
@@ -749,8 +779,8 @@ OS_OBJECT_USES_XREF_DISPOSE();
 		}
 	} else if (this->is_server_peer) {
 		// server peer
-		// should already have ports set up
-		xpc_assert(MACH_PORT_VALID(this->send_port));
+		// should already have ports set up (the send port is null if the peer
+		// closed its end before we got its checkin)
 		xpc_assert(MACH_PORT_VALID(this->recv_port));
 	} else {
 		// client for anonymous server

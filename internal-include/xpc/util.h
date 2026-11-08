@@ -218,6 +218,12 @@ mach_port_t xpc_mach_port_create_send_receive(void);
 bool xpc_mach_port_is_send_once(mach_port_t port);
 
 /**
+ * Returns the sender's audit token from the trailer of a received message,
+ * or `NULL` if it was received without an audit trailer.
+ */
+audit_token_t* xpc_mach_msg_audit_token(mach_msg_header_t* header);
+
+/**
  * Aborts the current process, with an optional reason.
  */
 XPC_NORETURN XPC_PRINTF(4, 5)
