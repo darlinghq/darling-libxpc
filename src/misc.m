@@ -46,7 +46,7 @@ int os_system_version_get_current_version(struct os_system_version* out_version)
 
 XPC_EXPORT
 bool _availability_version_check(size_t version_count, dyld_build_version_t* versions) {
-	if (versions == NULL) {
+	if (versions == NULL && version_count != 0) {
 		return false;
 	}
 
@@ -67,7 +67,13 @@ bool _availability_version_check(size_t version_count, dyld_build_version_t* ver
 		}
 	}
 
-	return false;
+	// QUIRK: a list without an entry for the running platform (including an
+	// empty list) counts as available. Only the first entry for the running
+	// platform is compared. Not documented (private function). Evidence:
+	// black-box observation on macOS 27.0.1, arm64 and x86_64 (tier 2).
+	// Test: availability_version_check.c ("no entry for macOS ...",
+	// "an empty list ...").
+	return true;
 };
 
 XPC_EXPORT
