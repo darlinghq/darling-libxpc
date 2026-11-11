@@ -1381,6 +1381,12 @@ void xpc_connection_set_non_launching(xpc_connection_t xconn, bool non_launching
 };
 
 XPC_EXPORT
+void __xpc_connection_set_logging(xpc_connection_t xconn, bool enabled) {
+	(void)xconn;
+	(void)enabled;
+};
+
+XPC_EXPORT
 void xpc_connection_set_oneshot_instance(xpc_connection_t xconn, const uint8_t* uuid) {
 	xpc_stub();
 };
