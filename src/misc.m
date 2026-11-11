@@ -42,11 +42,38 @@ struct os_system_version _system_version_fallback = {
 static struct os_system_version current_version = {0};
 static dispatch_once_t current_version_once;
 
+int os_system_version_get_current_version(struct os_system_version* out_version);
+
 XPC_EXPORT
 bool _availability_version_check(size_t version_count, dyld_build_version_t* versions) {
-	// i'm *pretty* sure the second argument is an array of `dyld_build_version_t`
-	xpc_stub();
-	return false;
+	if (versions == NULL && version_count != 0) {
+		return false;
+	}
+
+	struct os_system_version system_version;
+	if (os_system_version_get_current_version(&system_version) != 0) {
+		return false;
+	}
+
+	uint32_t packed_version =
+		(system_version.major << 16) |
+		(system_version.minor << 8) |
+		system_version.patch;
+	dyld_platform_t active_platform = dyld_get_active_platform();
+
+	for (size_t index = 0; index < version_count; ++index) {
+		if (versions[index].platform == active_platform) {
+			return packed_version >= versions[index].version;
+		}
+	}
+
+	// QUIRK: a list without an entry for the running platform (including an
+	// empty list) counts as available. Only the first entry for the running
+	// platform is compared. Not documented (private function). Evidence:
+	// black-box observation on macOS 27.0.1, arm64 and x86_64 (tier 2).
+	// Test: availability_version_check.c ("no entry for macOS ...",
+	// "an empty list ...").
+	return true;
 };
 
 XPC_EXPORT
