@@ -125,6 +125,7 @@ xpc_object_t xpc_bool_create(bool value);
 xpc_object_t xpc_data_create(const void *bytes, size_t length);
 xpc_object_t xpc_date_create(int64_t interval);
 xpc_object_t xpc_dictionary_create(const char *const _Nonnull *keys, xpc_object_t _Nullable const *values, size_t count);
+xpc_object_t xpc_dictionary_create_empty(void);
 xpc_object_t xpc_double_create(double value);
 xpc_object_t xpc_fd_create(int fd);
 xpc_object_t xpc_int64_create(int64_t value);
