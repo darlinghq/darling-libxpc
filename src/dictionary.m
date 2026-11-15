@@ -462,6 +462,11 @@ xpc_object_t xpc_dictionary_create(const char* const* keys, const xpc_object_t* 
 };
 
 XPC_EXPORT
+xpc_object_t xpc_dictionary_create_empty(void) {
+	return xpc_dictionary_create(NULL, NULL, 0);
+}
+
+XPC_EXPORT
 xpc_object_t xpc_dictionary_create_reply(xpc_object_t xorig) {
 	TO_OBJC_CHECKED(dictionary, xorig, orig) {
 		XPC_CLASS(dictionary)* dict = NULL;

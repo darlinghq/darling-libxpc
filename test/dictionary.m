@@ -44,6 +44,11 @@ CTEST(dictionary, create_empty) {
 	ASSERT_NOT_NULL(dict);
 	ASSERT_EQUAL_U(0, xpc_dictionary_get_count(dict));
 	xpc_release(dict);
+
+	dict = xpc_dictionary_create_empty();
+	ASSERT_NOT_NULL(dict);
+	ASSERT_EQUAL_U(0, xpc_dictionary_get_count(dict));
+	xpc_release(dict);
 };
 
 CTEST(dictionary, create_nonempty) {
