@@ -81,12 +81,17 @@ struct xpc_connection_s {
 
 	audit_token_t remote_credentials;
 
+	// serialises replacing the event handler with reading (and retaining) it for a call
+	pthread_mutex_t event_handler_lock;
+	// the "no event handler" fault is logged once per connection
+	bool no_handler_logged;
+
 	//
 	// mutable and lock-free
 	//
 	dispatch_mach_t mach_ctx;
 	void* user_context;
-	xpc_handler_t event_handler;
+	xpc_handler_t event_handler; // see event_handler_lock
 	xpc_finalizer_t finalizer;
 	atomic_intmax_t suspension_count;
 	bool is_cancelled;
