@@ -66,3 +66,12 @@ target_link_libraries(libxpc_test_nonexistent_service
 )
 
 install(TARGETS libxpc_test_nonexistent_service DESTINATION libexec/darling/usr/libexec)
+
+add_darling_executable(libxpc_test_cancel_notifies_peer cancel-notifies-peer.c)
+
+target_link_libraries(libxpc_test_cancel_notifies_peer
+	xpc_static
+	objc
+)
+
+install(TARGETS libxpc_test_cancel_notifies_peer DESTINATION libexec/darling/usr/libexec)

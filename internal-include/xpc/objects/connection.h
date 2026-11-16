@@ -128,6 +128,7 @@ struct xpc_connection_s {
 - (void)resume;
 - (void)suspend;
 - (void)cancel;
+- (void)releasePortsAfterCancel;
 
 /**
  * Takes ownership of the given server peer connection.
