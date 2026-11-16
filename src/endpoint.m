@@ -21,8 +21,11 @@
 #import <xpc/util.h>
 #import <xpc/xpc.h>
 #import <xpc/serialization.h>
+#include <bootstrap.h>
 
 XPC_CLASS_SYMBOL_DECL(endpoint);
+
+XPC_LOGGER_DEF(endpoint);
 
 OS_OBJECT_NONLAZY_CLASS
 @implementation XPC_CLASS(endpoint)
@@ -176,9 +179,25 @@ mach_port_t xpc_endpoint_copy_listener_port_4sim(xpc_endpoint_t xendpoint) {
 
 XPC_EXPORT
 xpc_endpoint_t xpc_endpoint_create_bs_named(const char* name, uint64_t flags, uint8_t* out_type) {
-	// parameter 3's purpose is a guess
-	xpc_stub();
-	return NULL;
+	// Guess, no public source: the endpoint of a named service is the port launchd hands out for that name
+	// (bootstrap_look_up returns a send right, bootstrap.h), the port a client connection to the name connects to.
+	// The meaning of `flags` and of the out parameter (a one-byte service type) is not known; flags are ignored and
+	// the type is reported as 0.
+	// A connection created from this endpoint has no service name, unlike one created by name: when the service goes
+	// away it is cancelled and delivers XPC_ERROR_CONNECTION_INVALID (connection.m, DISPATCH_MACH_NO_SENDERS), where a
+	// by-name connection reconnects and delivers XPC_ERROR_CONNECTION_INTERRUPTED. What macOS does there is unverified.
+	mach_port_t port = MACH_PORT_NULL;
+
+	if (!name || bootstrap_look_up(bootstrap_port, name, &port) != KERN_SUCCESS) {
+		xpc_log_error(endpoint, "failed to look up service with name \"%s\" for an endpoint", name ? name : "(null)");
+		return NULL;
+	}
+
+	if (out_type) {
+		*out_type = 0;
+	}
+
+	return [[XPC_CLASS(endpoint) alloc] initWithPortNoCopy: port];
 };
 
 XPC_EXPORT

@@ -75,3 +75,12 @@ target_link_libraries(libxpc_test_cancel_notifies_peer
 )
 
 install(TARGETS libxpc_test_cancel_notifies_peer DESTINATION libexec/darling/usr/libexec)
+
+add_darling_executable(libxpc_test_bs_named bs-named.c)
+
+target_link_libraries(libxpc_test_bs_named
+	xpc_static
+	objc
+)
+
+install(TARGETS libxpc_test_bs_named DESTINATION libexec/darling/usr/libexec)
