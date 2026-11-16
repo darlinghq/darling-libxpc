@@ -68,7 +68,10 @@ static void server_peer_array_item_dtor(XPC_CLASS(connection)** serverPeer) {
 	[*serverPeer release];
 };
 
-static xpc_connection_reply_context_t* xpc_connection_reply_context_create(xpc_handler_t handler, dispatch_queue_t queue) {
+// Keeps the connection alive until the context is destroyed: libdispatch calls the reply handler exactly once, either
+// with the reply or, once the connection is cancelled, with an error, and the connection must outlive that call even
+// when the last user reference is released (and the connection cancelled) before the reply handler runs.
+static xpc_connection_reply_context_t* xpc_connection_reply_context_create(XPC_CLASS(connection)* connection, xpc_handler_t handler, dispatch_queue_t queue) {
 	xpc_connection_reply_context_t* context = malloc(sizeof(xpc_connection_reply_context_t));
 
 	if (queue == NULL) {
@@ -77,6 +80,8 @@ static xpc_connection_reply_context_t* xpc_connection_reply_context_create(xpc_h
 
 	context->handler = Block_copy(handler);
 	context->queue = [queue retain];
+	context->connection = connection;
+	_os_object_retain_internal(connection);
 
 	xpc_log_debug(connection, "created reply context %p (with handler %p and queue %p)", context, context->handler, context->queue);
 
@@ -85,9 +90,11 @@ static xpc_connection_reply_context_t* xpc_connection_reply_context_create(xpc_h
 
 static void xpc_connection_reply_context_destroy(xpc_connection_reply_context_t* context) {
 	xpc_log_debug(connection, "destroying reply context %p (with handler %p and queue %p)", context, context->handler, context->queue);
+	XPC_CLASS(connection)* connection = context->connection;
 	Block_release(context->handler);
 	[context->queue release];
 	free(context);
+	_os_object_release_internal(connection);
 };
 
 // returns `true` if there was no error, `false` otherwise
@@ -368,9 +375,10 @@ static dispatch_queue_t dmxh_msg_context_reply_queue(void* msg_context) {
 };
 
 static void dmxh_async_reply_handler(void* self_context, dispatch_mach_reason_t reason, dispatch_mach_msg_t message) {
-	XPC_CLASS(connection)* self = self_context;
-	XPC_THIS_DECL(connection);
 	xpc_connection_reply_context_t* context = dispatch_get_context(message);
+	// not self_context: only the reply context holds a reference, the channel's own pointer may be dangling by now
+	XPC_CLASS(connection)* self = context->connection;
+	XPC_THIS_DECL(connection);
 	xpc_object_t result = NULL;
 	mach_msg_header_t* header = dispatch_mach_msg_get_msg(message, NULL);
 	mach_port_t localPort = header->msgh_local_port;
@@ -1011,7 +1019,7 @@ invalid_out:
 			xpc_abort("failed to finalize message");
 		}
 
-		context = xpc_connection_reply_context_create(handler, queue);
+		context = xpc_connection_reply_context_create(self, handler, queue);
 		dispatch_set_context(message, context);
 
 		dispatch_mach_send_with_result_and_async_reply_4libxpc(this->mach_ctx, message, 0, 0, &sendResult, &sendError);

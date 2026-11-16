@@ -75,3 +75,12 @@ target_link_libraries(libxpc_test_cancel_notifies_peer
 )
 
 install(TARGETS libxpc_test_cancel_notifies_peer DESTINATION libexec/darling/usr/libexec)
+
+add_darling_executable(libxpc_test_reply_handler_lifetime reply-handler-lifetime.c)
+
+target_link_libraries(libxpc_test_reply_handler_lifetime
+	xpc_static
+	objc
+)
+
+install(TARGETS libxpc_test_reply_handler_lifetime DESTINATION libexec/darling/usr/libexec)
