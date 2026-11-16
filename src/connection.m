@@ -253,6 +253,10 @@ static void dispatch_mach_handler(void* context, dispatch_mach_reason_t reason, 
 			Block_release(this->event_handler);
 			this->event_handler = NULL;
 
+			// the channel is finished with our ports; give them up now rather than in -dealloc, which may be much later
+			// if the user keeps their reference. this is what tells the other end that the connection is gone.
+			[self releasePortsAfterCancel];
+
 			// we've been cancelled; this is the very last event we'll ever receive, so we can release our internal reference now.
 			// note that this doesn't mean we instantly die; the user might still be holding their reference on us
 			_os_object_release_internal(self);
@@ -563,6 +567,26 @@ OS_OBJECT_USES_XREF_DISPOSE();
 	// we just released the internal user reference,
 	// but we might still be alive until we get fully cancelled and disconnected
 	// (if we didn't already)
+}
+
+// Gives up the rights a client or server-peer connection holds, so that the peer sees the connection
+// go away (no-senders on its receive port, dead name on the port it sends to) as soon as this one is
+// cancelled, not when the last reference is released. Listeners keep their ports: the listener's own
+// port is still asked for when making further endpoints.
+- (void)releasePortsAfterCancel
+{
+	XPC_THIS_DECL(connection);
+
+	if (this->is_listener) {
+		return;
+	}
+
+	xpc_assumes_zero(xpc_mach_port_release_send(this->send_port));
+	xpc_assumes_zero(xpc_mach_port_release_send(this->checkin_port));
+	xpc_assumes_zero(xpc_mach_port_release_receive(this->recv_port));
+	this->send_port = MACH_PORT_NULL;
+	this->checkin_port = MACH_PORT_NULL;
+	this->recv_port = MACH_PORT_NULL;
 }
 
 - (void)dealloc
