@@ -446,7 +446,13 @@ void xpc_array_set_data(xpc_object_t xarray, size_t index, const void* bytes, si
 
 XPC_EXPORT
 void xpc_array_set_connection(xpc_object_t xarray, size_t index, xpc_connection_t connection) {
-	return xpc_array_set_value(xarray, index, connection);
+	// see xpc_dictionary_set_connection(): the message carries an endpoint
+	xpc_object_t endpoint = xpc_endpoint_create(connection);
+	if (endpoint == NULL) {
+		return;
+	}
+	xpc_array_set_value(xarray, index, endpoint);
+	xpc_release(endpoint);
 };
 
 //
