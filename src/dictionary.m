@@ -480,6 +480,10 @@ xpc_object_t xpc_dictionary_create_reply(xpc_object_t xorig) {
 		dict.outgoingPort = orig.incomingPort;
 		orig.incomingPort = MACH_PORT_NULL;
 
+		// the reply is addressed through the connection the request arrived on
+		// (xpc_dictionary_get_remote_connection works on a reply, as on a received message)
+		dict.associatedConnection = orig.associatedConnection;
+
 		return dict;
 	}
 	return NULL;
