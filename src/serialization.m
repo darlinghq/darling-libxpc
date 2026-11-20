@@ -246,9 +246,13 @@ XPC_CLASS_HEADER(serializer);
 
 			// it might be wasteful to be allocating whole pages just for a few mach_port_t's,
 			// but it's the best way to ensure the array survives until the kernel receives it (and the kernel will take care of deallocating it)
-			if (mach_vm_allocate(mach_task_self(), (mach_vm_address_t*)&ool_ports_desc->address, sizeof(mach_port_t) * port_array->length, VM_FLAGS_ANYWHERE) != KERN_SUCCESS) {
+			// (the allocation goes through a mach_vm_address_t: the descriptor's address field is only pointer-sized,
+			// and a 64-bit store through it would overwrite the fields that follow it in 32-bit processes)
+			mach_vm_address_t ool_ports_address = 0;
+			if (mach_vm_allocate(mach_task_self(), &ool_ports_address, sizeof(mach_port_t) * port_array->length, VM_FLAGS_ANYWHERE) != KERN_SUCCESS) {
 				xpc_abort("failed to allocate memory for OOL port array");
 			}
+			ool_ports_desc->address = (void*)(uintptr_t)ool_ports_address;
 
 			memcpy(ool_ports_desc->address, port_array->array, sizeof(mach_port_t) * port_array->length);
 		} else if (port_array->length > 0) {
