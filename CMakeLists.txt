@@ -4,9 +4,10 @@ cmake_minimum_required(VERSION 3.12)
 
 # DARLING: -msse* is x86-only. clang 11 silently dropped them on aarch64, but
 # clang 19 errors out. Gate on host arch.
-if (TARGET_x86_64 OR TARGET_i386)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse -msse2 -msse3")
-endif()
+# The SSE options are for the Intel slices only
+darling_archs(_sse_archs FAMILY x86)
+darling_xarch_flags(_sse_flags ARCHS ${_sse_archs} OPTIONS -msse -msse2 -msse3)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_sse_flags}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -nostdinc -fblocks -fvisibility=hidden")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D__DARWIN_UNIX03 -fPIC")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -nostdlib")
