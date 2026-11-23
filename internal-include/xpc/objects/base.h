@@ -20,6 +20,19 @@
 #ifndef _XPC_OBJECTS_BASE_H_
 #define _XPC_OBJECTS_BASE_H_
 
+#if __has_include(<ptrauth.h>)
+#include <ptrauth.h>
+#endif
+#ifndef __ptrauth_objc_isa_pointer
+#if __has_feature(ptrauth_calls)
+/* objc isa signing: key DA, address-diversified, discriminator ISA_SIGNING_DISCRIMINATOR
+ * (0x6AE1) from objc4 runtime/objc-config.h */
+#define __ptrauth_objc_isa_pointer __ptrauth(2, 1, 0x6AE1)
+#else
+#define __ptrauth_objc_isa_pointer
+#endif
+#endif
+
 #import <os/object_private.h>
 #import <objc/NSObject.h>
 #import <xpc/internal_base.h>
@@ -180,7 +193,7 @@ struct xpc_object_vtable_s {
 
 struct xpc_object_s {
 	_OS_OBJECT_HEADER(
-		const struct xpc_object_vtable_s* os_obj_isa,
+		const struct xpc_object_vtable_s* __ptrauth_objc_isa_pointer os_obj_isa,
 		os_obj_ref_cnt,
 		os_obj_xref_cnt
 	);
