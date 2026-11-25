@@ -35,7 +35,12 @@ XPC_EXPORT XPC_TYPE(_xpc_type_activity);
 #define XPC_TYPE_ACTIVITY (&_xpc_type_activity)
 
 enum {
-    XPC_ACTIVITY_STATE_RUN = 2
+    XPC_ACTIVITY_STATE_CHECK_IN,
+    XPC_ACTIVITY_STATE_WAIT,
+    XPC_ACTIVITY_STATE_RUN,
+    XPC_ACTIVITY_STATE_DEFER,
+    XPC_ACTIVITY_STATE_CONTINUE,
+    XPC_ACTIVITY_STATE_DONE,
 };
 typedef long xpc_activity_state_t;
 
@@ -50,11 +55,19 @@ XPC_EXPORT const char * XPC_ACTIVITY_PRIORITY_MAINTENANCE;
 XPC_EXPORT const char * XPC_ACTIVITY_PRIORITY_UTILITY;
 XPC_EXPORT const char * XPC_ACTIVITY_REPEATING;
 XPC_EXPORT const char * XPC_ACTIVITY_INTERVAL;
-XPC_EXPORT const char * XPC_ACTIVITY_REQUIRE_NETWORK_CONNECTIVITY;
+// Not part of the public header on macOS; declared as in Apple's private
+// header (a constant pointer), the way WebKit's SPI declarations repeat it.
+XPC_EXPORT const char * const XPC_ACTIVITY_REQUIRE_NETWORK_CONNECTIVITY;
+// Not part of the public header on macOS either; also a constant pointer.
+XPC_EXPORT const char * const XPC_ACTIVITY_RANDOM_INITIAL_DELAY;
 
 xpc_activity_state_t xpc_activity_get_state(xpc_activity_t activity);
 void xpc_activity_register(const char *identifier, xpc_object_t criteria, xpc_activity_handler_t handler);
 void xpc_activity_unregister(const char *identifier);
+xpc_object_t xpc_activity_copy_criteria(xpc_activity_t activity);
+void xpc_activity_set_criteria(xpc_activity_t activity, xpc_object_t criteria);
+bool xpc_activity_set_state(xpc_activity_t activity, xpc_activity_state_t state);
+bool xpc_activity_should_defer(xpc_activity_t activity);
 
 __END_DECLS
 
