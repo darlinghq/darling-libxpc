@@ -42,7 +42,7 @@ KEY_DEF(GROUP_NAME, "ActivityGroupName");
 KEY_DEF(MAY_REBOOT_DEVICE, "MayRebootDevice");
 KEY_DEF(POST_INSTALL, "PostInstall");
 KEY_DEF(POWER_NAP, "PowerNap");
-KEY_DEF(RANDOM_INITIAL_DELAY, "RandomInitialDelay");
+XPC_EXPORT const char* const XPC_ACTIVITY_RANDOM_INITIAL_DELAY = "RandomInitialDelay";
 KEY_DEF(REPEATING, "Repeating");
 KEY_DEF(REPLY_ENDPOINT, "_ReplyEndpoint");
 KEY_DEF(SEQUENCE_NUMBER, "_SequenceNumber");
@@ -98,7 +98,7 @@ KEY_DEF(REQUIRES_CLASS_C, "RequiresClassC");
 KEY_DEF(REQUIRE_BATTERY_LEVEL, "RequireBatteryLevel");
 KEY_DEF(REQUIRE_HDD_SPINNING, "RequireHDDSpinning");
 KEY_DEF(REQUIRE_INEXPENSIVE_NETWORK_CONNECTIVITY, "RequireInexpensiveNetworkConnectivity");
-KEY_DEF(REQUIRE_NETWORK_CONNECTIVITY, "RequireNetworkConnectivity");
+XPC_EXPORT const char* const XPC_ACTIVITY_REQUIRE_NETWORK_CONNECTIVITY = "RequireNetworkConnectivity";
 KEY_DEF(REQUIRE_SCREEN_SLEEP, "RequireScreenSleep");
 KEY_DEF(REQUIRE_SIGNIFICANT_USER_INACTIVITY, "RequireSignificantUserInactivity");
 
