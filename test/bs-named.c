@@ -69,8 +69,9 @@ int main(void) {
 		fprintf(stderr, "FAIL: no endpoint for the registered service %s\n", TEST_SERVICE_NAME);
 		return 1;
 	}
-	if (type == 0xAA) {
-		fprintf(stderr, "FAIL: the out type parameter was left uninitialised\n");
+	// QUIRK pinned: the out type of a found service is 2 (observed on macOS 26.7.3, see endpoint.m)
+	if (type != 2) {
+		fprintf(stderr, "FAIL: the out type parameter is %d, expected 2\n", type);
 		return 1;
 	}
 
