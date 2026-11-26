@@ -48,6 +48,7 @@ xpc_connection_t xpc_connection_create(const char *name, dispatch_queue_t target
 xpc_connection_t xpc_connection_create_from_endpoint(xpc_endpoint_t endpoint);
 xpc_connection_t xpc_connection_create_mach_service(const char *name, dispatch_queue_t targetq, uint64_t flags);
 au_asid_t xpc_connection_get_asid(xpc_connection_t connection);
+void * xpc_connection_get_context(xpc_connection_t connection);
 gid_t xpc_connection_get_egid(xpc_connection_t connection);
 uid_t xpc_connection_get_euid(xpc_connection_t connection);
 const char * xpc_connection_get_name(xpc_connection_t connection);
