@@ -3,7 +3,7 @@
 // answers a "hello" message with a "hello" reply.
 //   Documented (xpc_dictionary_get_remote_connection): "any other dictionary" than one received by an event handler
 //   or created by xpc_dictionary_create_reply gets NULL.
-//   Not documented, unverified against macOS: a reply handed to a reply handler, or returned by
+//   Not documented, observed on macOS 26.7.3: a reply handed to a reply handler, or returned by
 //   xpc_connection_send_message_with_reply_sync, reports the connection it arrived on, like a message handed to the
 //   event handler. The weak-reference cases pin our choice that the dictionary does not keep the connection alive.
 #include <dispatch/dispatch.h>
