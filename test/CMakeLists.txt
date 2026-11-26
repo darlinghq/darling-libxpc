@@ -76,6 +76,35 @@ target_link_libraries(libxpc_test_cancel_notifies_peer
 
 install(TARGETS libxpc_test_cancel_notifies_peer DESTINATION libexec/darling/usr/libexec)
 
+add_darling_executable(libxpc_test_pending_reply_after_release pending-reply-after-release.c)
+
+target_link_libraries(libxpc_test_pending_reply_after_release
+	xpc_static
+	objc
+)
+
+install(TARGETS libxpc_test_pending_reply_after_release DESTINATION libexec/darling/usr/libexec)
+
+add_subdirectory(framework-service)
+
+add_darling_executable(libxpc_test_framework_xpc_services framework-xpc-services.c)
+
+target_link_libraries(libxpc_test_framework_xpc_services
+	xpc_static
+	objc
+)
+
+install(TARGETS libxpc_test_framework_xpc_services DESTINATION libexec/darling/usr/libexec)
+
+add_darling_executable(libxpc_test_framework_xpc_instances framework-xpc-instances.c)
+
+target_link_libraries(libxpc_test_framework_xpc_instances
+	xpc_static
+	objc
+)
+
+install(TARGETS libxpc_test_framework_xpc_instances DESTINATION libexec/darling/usr/libexec)
+
 add_darling_executable(libxpc_test_reply_remote_connection reply-remote-connection.c)
 
 target_link_libraries(libxpc_test_reply_remote_connection

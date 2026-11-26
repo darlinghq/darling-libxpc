@@ -23,6 +23,7 @@
 void xpc_stub_init(void);
 
 extern void bootstrap_init(void); // in liblaunch
+extern void xpc_bundle_services_init(void); // in bundle.m
 
 XPC_EXPORT
 void _libxpc_initializer(void)
@@ -32,6 +33,7 @@ void _libxpc_initializer(void)
 #endif
 	xpc_stub_init();
 	bootstrap_init();
+	xpc_bundle_services_init();
 }
 
 XPC_EXPORT

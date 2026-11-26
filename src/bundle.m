@@ -29,6 +29,16 @@
 #include <Block.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <dlfcn.h>
+#include <errno.h>
+#include <libgen.h>
+#include <mach-o/dyld.h>
+#include <os/lock.h>
+#include <servers/bootstrap.h>
+#include <xpc/launchd_defs.h>
+#include <xpc/private/pipe.h>
+
+XPC_LOGGER_DEF(bundle);
 
 #define INFO_DICT_XPC_SERVICE_KEY "XPCService"
 
@@ -470,9 +480,146 @@ void xpc_bundle_resolve_sync(xpc_object_t xbundle) {
 	}
 };
 
+//
+// XPC services in frameworks
+//
+// A framework can hold XPC services (WebKit's web content and networking
+// processes are some), and a process that has loaded the framework can connect
+// to them by name; before it loads the framework it can't (observed on macOS
+// 26.7.3; test: test/framework-xpc-services.c). launchd keeps the services a
+// process can see in its domain, so the services directory of each framework
+// that is loaded is sent to launchd before a connection looks a name up.
+//
+// The dyld callback only notes the directories: it runs with dyld's lock held,
+// possibly before the Objective-C runtime is ready, so it can't send messages.
+//
+
+static os_unfair_lock pending_services_lock = OS_UNFAIR_LOCK_INIT;
+static char** pending_services_dirs = NULL;
+static size_t pending_services_count = 0;
+static size_t pending_services_capacity = 0;
+
+static void note_services_directory(const char* dir) {
+	char* copy = strdup(dir);
+	if (!copy) {
+		return;
+	}
+	os_unfair_lock_lock(&pending_services_lock);
+	if (pending_services_count == pending_services_capacity) {
+		size_t capacity = pending_services_capacity ? pending_services_capacity * 2 : 4;
+		char** grown = realloc(pending_services_dirs, capacity * sizeof(char*));
+		if (!grown) {
+			os_unfair_lock_unlock(&pending_services_lock);
+			free(copy);
+			return;
+		}
+		pending_services_dirs = grown;
+		pending_services_capacity = capacity;
+	}
+	pending_services_dirs[pending_services_count++] = copy;
+	os_unfair_lock_unlock(&pending_services_lock);
+}
+
+static void image_added(const struct mach_header* header, intptr_t slide) {
+	Dl_info info;
+	if (!dladdr(header, &info) || !info.dli_fname) {
+		return;
+	}
+
+	// The services are next to the binary of a framework: in
+	// X.framework/Versions/<v>/ or, for a shallow framework, in X.framework/.
+	char binary[PATH_MAX];
+	if (strlcpy(binary, info.dli_fname, sizeof(binary)) >= sizeof(binary)) {
+		return;
+	}
+	const char* binary_dir = dirname(binary);
+	if (!binary_dir || !strstr(binary_dir, ".framework")) {
+		return;
+	}
+	size_t length = strlen(binary_dir);
+	const char* framework_end = strstr(binary_dir, ".framework");
+	const char* after = framework_end + strlen(".framework");
+	if (*after != '\0' && strncmp(after, "/Versions/", strlen("/Versions/")) != 0) {
+		return;
+	}
+
+	char dir[PATH_MAX];
+	if (snprintf(dir, sizeof(dir), "%.*s/XPCServices", (int)length, binary_dir) >= (int)sizeof(dir)) {
+		return;
+	}
+	char resolved[PATH_MAX];
+	struct stat st;
+	if (!realpath(dir, resolved) || stat(resolved, &st) != 0 || !S_ISDIR(st.st_mode)) {
+		return;
+	}
+	note_services_directory(resolved);
+}
+
+static int add_services_directory(const char* dir) {
+	xpc_pipe_t pipe = xpc_pipe_create_from_port(bootstrap_port, 0);
+	if (!pipe) {
+		return EPIPE;
+	}
+
+	xpc_object_t request = xpc_dictionary_create(NULL, NULL, 0);
+	xpc_dictionary_set_uint64(request, XPC_PROCESS_ROUTINE_KEY_OP, XPC_PROCESS_ADD_SERVICES_DIRECTORY);
+	xpc_dictionary_set_string(request, XPC_PROCESS_ROUTINE_KEY_PATH, dir);
+
+	xpc_object_t reply = NULL;
+	int status = xpc_pipe_routine(pipe, request, &reply);
+	xpc_release(request);
+	xpc_release(pipe);
+
+	if (status == 0) {
+		status = (int)xpc_dictionary_get_uint64(reply, XPC_PROCESS_ROUTINE_KEY_ERROR);
+	}
+	if (reply) {
+		xpc_release(reply);
+	}
+	return status;
+}
+
+void xpc_bundle_services_init(void) {
+	_dyld_register_func_for_add_image(image_added);
+}
+
+void xpc_bundle_services_register_loaded(void) {
+	os_unfair_lock_lock(&pending_services_lock);
+	char** dirs = pending_services_dirs;
+	size_t count = pending_services_count;
+	pending_services_dirs = NULL;
+	pending_services_count = 0;
+	pending_services_capacity = 0;
+	os_unfair_lock_unlock(&pending_services_lock);
+
+	for (size_t i = 0; i < count; i++) {
+		int status = add_services_directory(dirs[i]);
+		if (status != 0) {
+			xpc_log_error(bundle, "failed to add the XPC services in \"%s\": %d", dirs[i], status);
+		}
+		free(dirs[i]);
+	}
+	free(dirs);
+}
+
+// Adds the XPC services of the bundle at `path` (an application or a
+// framework) to the process's domain.
 XPC_EXPORT
 void xpc_add_bundle(const char* path, unsigned int flags) {
-	xpc_stub();
+	if (!path) {
+		return;
+	}
+	size_t length = strlen(path);
+	bool framework = length >= strlen(".framework") && strcmp(path + length - strlen(".framework"), ".framework") == 0;
+	char dir[PATH_MAX];
+	if (snprintf(dir, sizeof(dir), "%s/%s", path, framework ? "XPCServices" : "Contents/XPCServices") >= (int)sizeof(dir)) {
+		return;
+	}
+	char resolved[PATH_MAX];
+	if (!realpath(dir, resolved)) {
+		return;
+	}
+	(void)add_services_directory(resolved);
 };
 
 XPC_EXPORT

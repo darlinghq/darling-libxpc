@@ -34,6 +34,7 @@
 #import <xpc/generic_array.h>
 
 #include <stdatomic.h>
+#include <uuid/uuid.h>
 
 XPC_IGNORE_DUPLICATE_PROTOCOL_PUSH;
 XPC_CLASS_DECL(connection);
@@ -46,6 +47,9 @@ XPC_IGNORE_DUPLICATE_PROTOCOL_POP;
 typedef struct xpc_connection_reply_context_s {
 	xpc_handler_t handler;
 	dispatch_queue_t queue;
+	// An internal reference, so the connection outlives its pending replies:
+	// libdispatch can deliver them after the last user reference is gone.
+	XPC_CLASS(connection)* connection;
 } xpc_connection_reply_context_t;
 
 XPC_GENARR_DECL(connection, XPC_CLASS(connection)*, /* non-static */);
@@ -92,6 +96,11 @@ struct xpc_connection_s {
 	bool is_cancelled;
 	// set when the named service couldn't be looked up; the connection is invalid, not interrupted
 	bool lookup_failed;
+	// the instance of a multiple-instance service this client connects to
+	// (xpc_connection_set_instance and xpc_connection_set_oneshot_instance);
+	// set before the connection is activated
+	bool has_instance;
+	uuid_t instance;
 
 	//
 	// other

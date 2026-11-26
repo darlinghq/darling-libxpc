@@ -107,4 +107,16 @@ struct xpc_bundle_s {
 
 @end
 
+/**
+ * Watches for loaded frameworks that hold XPC services (an XPCServices
+ * directory next to the framework's binary). Called once, at initialization.
+ */
+void xpc_bundle_services_init(void);
+
+/**
+ * Has launchd add the XPC services of the frameworks loaded so far to the
+ * process's domain, so a connection can look them up by name.
+ */
+void xpc_bundle_services_register_loaded(void);
+
 #endif // _XPC_OBJECTS_BUNDLE_H_

@@ -28,6 +28,8 @@
 #include <xpc/serialization.h>
 #import <objc/runtime.h>
 #include <Block.h>
+#include <signal.h>
+#include <bootstrap_priv.h>
 
 XPC_CLASS_SYMBOL_DECL(connection);
 
@@ -68,7 +70,7 @@ static void server_peer_array_item_dtor(XPC_CLASS(connection)** serverPeer) {
 	[*serverPeer release];
 };
 
-static xpc_connection_reply_context_t* xpc_connection_reply_context_create(xpc_handler_t handler, dispatch_queue_t queue) {
+static xpc_connection_reply_context_t* xpc_connection_reply_context_create(XPC_CLASS(connection)* connection, xpc_handler_t handler, dispatch_queue_t queue) {
 	xpc_connection_reply_context_t* context = malloc(sizeof(xpc_connection_reply_context_t));
 
 	if (queue == NULL) {
@@ -77,6 +79,8 @@ static xpc_connection_reply_context_t* xpc_connection_reply_context_create(xpc_h
 
 	context->handler = Block_copy(handler);
 	context->queue = [queue retain];
+	context->connection = connection;
+	_os_object_retain_internal(connection);
 
 	xpc_log_debug(connection, "created reply context %p (with handler %p and queue %p)", context, context->handler, context->queue);
 
@@ -85,9 +89,11 @@ static xpc_connection_reply_context_t* xpc_connection_reply_context_create(xpc_h
 
 static void xpc_connection_reply_context_destroy(xpc_connection_reply_context_t* context) {
 	xpc_log_debug(connection, "destroying reply context %p (with handler %p and queue %p)", context, context->handler, context->queue);
+	XPC_CLASS(connection)* connection = context->connection;
 	Block_release(context->handler);
 	[context->queue release];
 	free(context);
+	_os_object_release_internal(connection);
 };
 
 // returns `true` if there was no error, `false` otherwise
@@ -368,9 +374,12 @@ static dispatch_queue_t dmxh_msg_context_reply_queue(void* msg_context) {
 };
 
 static void dmxh_async_reply_handler(void* self_context, dispatch_mach_reason_t reason, dispatch_mach_msg_t message) {
-	XPC_CLASS(connection)* self = self_context;
-	XPC_THIS_DECL(connection);
 	xpc_connection_reply_context_t* context = dispatch_get_context(message);
+	// Not `self_context`: once the last user reference to the connection is
+	// released, libdispatch passes a poisoned value there for the replies that
+	// were still pending.
+	XPC_CLASS(connection)* self = context->connection;
+	XPC_THIS_DECL(connection);
 	xpc_object_t result = NULL;
 	mach_msg_header_t* header = dispatch_mach_msg_get_msg(message, NULL);
 	mach_port_t localPort = header->msgh_local_port;
@@ -801,7 +810,15 @@ OS_OBJECT_USES_XREF_DISPOSE();
 		xpc_assert(MACH_PORT_VALID(this->recv_port));
 	} else if (this->service_name) {
 		// client for named server
-		status = bootstrap_look_up(bootstrap_port, this->service_name, &this->checkin_port);
+		xpc_bundle_services_register_loaded();
+		if (this->has_instance) {
+			// launchd starts a process for each instance of a service that
+			// declares multiple instances, and gives the same one to all
+			// lookups of an instance.
+			status = bootstrap_look_up3(bootstrap_port, this->service_name, &this->checkin_port, 0, this->instance, BOOTSTRAP_SPECIFIC_INSTANCE);
+		} else {
+			status = bootstrap_look_up(bootstrap_port, this->service_name, &this->checkin_port);
+		}
 		if (status != KERN_SUCCESS) {
 			xpc_log_error(connection, "failed to lookup service with name \"%s\"", this->service_name);
 			goto invalid_out;
@@ -1016,7 +1033,7 @@ invalid_out:
 			xpc_abort("failed to finalize message");
 		}
 
-		context = xpc_connection_reply_context_create(handler, queue);
+		context = xpc_connection_reply_context_create(self, handler, queue);
 		dispatch_set_context(message, context);
 
 		dispatch_mach_send_with_result_and_async_reply_4libxpc(this->mach_ctx, message, 0, 0, &sendResult, &sendError);
@@ -1312,9 +1329,24 @@ void xpc_connection_set_target_uid(xpc_connection_t xconn, uid_t uid) {
 	xpc_stub();
 };
 
+// Selects the instance of a service that declares _MultipleInstances, by UUID.
+// Connections with the same UUID reach the same process, as on macOS 26.7.3
+// (test framework-xpc-instances.c).
+static void xpc_connection_select_instance(xpc_connection_t xconn, const uint8_t* uuid) {
+	TO_OBJC_CHECKED(connection, xconn, conn) {
+		struct xpc_connection_s* this = (struct xpc_connection_s*)conn;
+		if (uuid == NULL) {
+			this->has_instance = false;
+			return;
+		}
+		uuid_copy(this->instance, uuid);
+		this->has_instance = true;
+	}
+}
+
 XPC_EXPORT
 void xpc_connection_set_instance(xpc_connection_t xconn, uuid_t uuid) {
-	xpc_stub();
+	xpc_connection_select_instance(xconn, uuid);
 };
 
 XPC_EXPORT
@@ -1371,7 +1403,14 @@ uint8_t xpc_connection_get_bs_type(xpc_connection_t xconn) {
 
 XPC_EXPORT
 void xpc_connection_get_instance(xpc_connection_t xconn, uint8_t* out_uuid) {
-	xpc_stub();
+	TO_OBJC_CHECKED(connection, xconn, conn) {
+		struct xpc_connection_s* this = (struct xpc_connection_s*)conn;
+		if (this->has_instance) {
+			uuid_copy(out_uuid, this->instance);
+		} else {
+			uuid_clear(out_uuid);
+		}
+	}
 };
 
 XPC_EXPORT
@@ -1379,9 +1418,15 @@ bool xpc_connection_is_extension(xpc_connection_t xconn) {
 	return false;
 };
 
+// Sends a signal to the process at the other end of the connection
+// (test framework-xpc-instances.c). Its process ID is known once a message
+// from it has arrived; before that there is nobody to signal.
 XPC_EXPORT
 void xpc_connection_kill(xpc_connection_t xconn, int signal) {
-	xpc_stub();
+	pid_t pid = xpc_connection_get_pid(xconn);
+	if (pid > 0) {
+		kill(pid, signal);
+	}
 };
 
 XPC_EXPORT
@@ -1419,7 +1464,7 @@ void __xpc_connection_set_logging(xpc_connection_t xconn, bool enabled) {
 
 XPC_EXPORT
 void xpc_connection_set_oneshot_instance(xpc_connection_t xconn, const uint8_t* uuid) {
-	xpc_stub();
+	xpc_connection_select_instance(xconn, uuid);
 };
 
 XPC_EXPORT

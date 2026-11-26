@@ -38,7 +38,10 @@ typedef enum {
         XPC_PROCESS_SERVICE_ATTACH,
         XPC_PROCESS_SERVICE_DETACH,
         XPC_PROCESS_SERVICE_GET_PROPERTIES,
-        XPC_PROCESS_SERVICE_KILL
+        XPC_PROCESS_SERVICE_KILL,
+        // Darling's own: the XPC services in a directory join the caller's
+        // domain (the path is under XPC_PROCESS_ROUTINE_KEY_PATH).
+        XPC_PROCESS_ADD_SERVICES_DIRECTORY
 } xpc_jetsam_t;
 
 typedef enum {
