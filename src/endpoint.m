@@ -21,8 +21,11 @@
 #import <xpc/util.h>
 #import <xpc/xpc.h>
 #import <xpc/serialization.h>
+#include <bootstrap.h>
 
 XPC_CLASS_SYMBOL_DECL(endpoint);
+
+XPC_LOGGER_DEF(endpoint);
 
 OS_OBJECT_NONLAZY_CLASS
 @implementation XPC_CLASS(endpoint)
@@ -176,9 +179,28 @@ mach_port_t xpc_endpoint_copy_listener_port_4sim(xpc_endpoint_t xendpoint) {
 
 XPC_EXPORT
 xpc_endpoint_t xpc_endpoint_create_bs_named(const char* name, uint64_t flags, uint8_t* out_type) {
-	// parameter 3's purpose is a guess
-	xpc_stub();
-	return NULL;
+	// The endpoint of a named service is the send right bootstrap_look_up returns for the name (bootstrap.h), the port a
+	// client connection to the name connects to. NULL when the name is NULL or is not registered.
+	// QUIRK: *out_type is set to 2 for a service that was found. Not documented. Evidence: black-box call of the symbol
+	// on macOS 26.7.3 with several launchd services of the system and user domains (tier 2): every one reported 2, and a
+	// name that is not registered gave NULL. The flags argument is ignored: on macOS 26.7.3 the value 2 returned NULL for
+	// a registered service and 1 and 16 behaved like 0; nothing public says what the bits mean, so this is not copied.
+	// A connection created from this endpoint has no service name, unlike one created by name: when the service goes
+	// away it is cancelled and delivers XPC_ERROR_CONNECTION_INVALID (connection.m, DISPATCH_MACH_NO_SENDERS), where a
+	// by-name connection reconnects and delivers XPC_ERROR_CONNECTION_INTERRUPTED. Not verified on macOS.
+	// Test: test/bs-named.c
+	mach_port_t port = MACH_PORT_NULL;
+
+	if (!name || bootstrap_look_up(bootstrap_port, name, &port) != KERN_SUCCESS) {
+		xpc_log_error(endpoint, "failed to look up service with name \"%s\" for an endpoint", name ? name : "(null)");
+		return NULL;
+	}
+
+	if (out_type) {
+		*out_type = 2;
+	}
+
+	return [[XPC_CLASS(endpoint) alloc] initWithPortNoCopy: port];
 };
 
 XPC_EXPORT
