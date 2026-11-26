@@ -408,10 +408,17 @@ static void dmxh_async_reply_handler(void* self_context, dispatch_mach_reason_t 
 			}
 
 			[message retain]; // because the deserializer consumes a reference on the message
-			result = [XPC_CLASS(deserializer) process: message];
-			if (!result) {
+			XPC_CLASS(dictionary)* reply = [XPC_CLASS(deserializer) process: message];
+			if (!reply) {
 				xpc_abort("failed to deserialize reply");
 			}
+			// QUIRK: a reply reports the connection it arrived on, like a received message does. The documentation covers
+			// only dictionaries received by an event handler and created by xpc_dictionary_create_reply. Evidence:
+			// black-box observation on macOS 26.7.3 (tier 2): in-process anonymous listener and client, the reply given to
+			// a reply handler and the result of xpc_connection_send_message_with_reply_sync both report the client
+			// connection. Test: test/reply-remote-connection.c
+			reply.associatedConnection = self;
+			result = reply;
 			// `header` is no longer valid
 		} break;
 
@@ -1099,6 +1106,8 @@ invalid_out:
 		// give it its own autoreleasepool to reduce memory usage
 		// (to ensure that the serializer from before is released)
 		result = [[XPC_CLASS(deserializer) process: reply] retain];
+		// QUIRK: see dmxh_async_reply_handler
+		result.associatedConnection = self;
 	}
 
 	return result;
