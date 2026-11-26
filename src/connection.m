@@ -188,7 +188,9 @@ static void call_event_handler(XPC_CLASS(connection)* self, xpc_object_t event) 
 		handler(event);
 		Block_release(handler);
 	} else if (log_missing) {
-		// libxpc used to crash here; real behaviour is NEEDS-REAL-MAC. Fail loud once instead of silently dropping.
+		// Deliberately more lenient than macOS: macOS 26.7.3 traps in xpc_connection_resume when the connection has no
+		// event handler (black-box observation, tier 2). Here the event is dropped and the first one is logged, instead of
+		// calling a NULL block. Test: test/handler-lifetime.m (no-handler)
 		xpc_log_fault(connection, "connection %p (service %s) received an event but has no event handler; dropping events", self, this->service_name ? this->service_name : "(anonymous)");
 	}
 };
