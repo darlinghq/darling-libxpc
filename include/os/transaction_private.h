@@ -20,6 +20,19 @@
 #ifndef _OS_TRANSACTION_PRIVATE_H_
 #define _OS_TRANSACTION_PRIVATE_H_
 
+#if __has_include(<ptrauth.h>)
+#include <ptrauth.h>
+#endif
+#ifndef __ptrauth_objc_isa_pointer
+#if __has_feature(ptrauth_calls)
+/* objc isa signing: key DA, address-diversified, discriminator ISA_SIGNING_DISCRIMINATOR
+ * (0x6AE1) from objc4 runtime/objc-config.h */
+#define __ptrauth_objc_isa_pointer __ptrauth(2, 1, 0x6AE1)
+#else
+#define __ptrauth_objc_isa_pointer
+#endif
+#endif
+
 #include <os/object_private.h>
 
 #if OS_OBJECT_USE_OBJC
@@ -29,7 +42,7 @@ struct os_transaction_vtable_s {
 
 struct os_transaction_s {
 	_OS_OBJECT_HEADER(
-		const struct os_transaction_vtable_s* os_obj_isa,
+		const struct os_transaction_vtable_s* __ptrauth_objc_isa_pointer os_obj_isa,
 		os_obj_ref_cnt,
 		os_obj_xref_cnt
 	);
